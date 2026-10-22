@@ -3,7 +3,7 @@
 Copyright (c) 2026 Lisien
 
 This is **source-available software**, not an open-source license in the
-OSI sense — the source is public so you can read it, learn from it, and
+OSI sense. The source is public so you can read it, learn from it, and
 build it yourself, but redistribution is not permitted.
 
 ## You may:
