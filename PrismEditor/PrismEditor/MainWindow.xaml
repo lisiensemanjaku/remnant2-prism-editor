@@ -1,0 +1,468 @@
+﻿<Window x:Class="PrismEditor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PrismEditor"
+        mc:Ignorable="d"
+        Title="Remnant 2 Prism Editor" Height="840" Width="1340"
+        Icon="app.ico"
+        Background="#0b0a0a">
+    <Window.Resources>
+        <local:BuiltToColorConverter x:Key="BuiltToColorConverter"/>
+        <local:BuiltToStatusConverter x:Key="BuiltToStatusConverter"/>
+        <local:BuiltToOpacityConverter x:Key="BuiltToOpacityConverter"/>
+
+        <!-- Remnant-inspired palette: near-black ground, blood-red accent, worn gold for legendary -->
+        <SolidColorBrush x:Key="Ground" Color="#0b0a0a"/>
+        <SolidColorBrush x:Key="Panel" Color="#161313"/>
+        <SolidColorBrush x:Key="PanelLight" Color="#201a1a"/>
+        <SolidColorBrush x:Key="Hairline" Color="#3a2424"/>
+        <SolidColorBrush x:Key="Blood" Color="#9c1f1f"/>
+        <SolidColorBrush x:Key="BloodBright" Color="#e14536"/>
+        <SolidColorBrush x:Key="Gold" Color="#d4ae55"/>
+        <SolidColorBrush x:Key="Bone" Color="#9c8567"/>
+        <SolidColorBrush x:Key="TextMain" Color="#efe8db"/>
+        <SolidColorBrush x:Key="TextDim" Color="#8c7e74"/>
+        <SolidColorBrush x:Key="Parchment" Color="#ede4d2"/>
+
+        <!-- The prism's faceted-crystal silhouette, shared by the list icons and the big "zoomed in"
+             selected-prism view so both are the exact same shape, not just similar ones. -->
+        <!-- An irregular, asymmetric faceted silhouette, not a clean symmetric diamond, closer to
+             the rough-cut meteorite/crystal look the prism actually has in-game. -->
+        <Geometry x:Key="GemGeometry">M52,0 L80,25 L68,55 L100,70 L85,115 L60,180 L30,160 L0,100 L20,45 Z</Geometry>
+        <LinearGradientBrush x:Key="GemFillBrush" StartPoint="0.2,0" EndPoint="0.8,1">
+            <GradientStop Color="#d8e8e6" Offset="0"/>
+            <GradientStop Color="#3a4a4e" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- ============== Base text / layout ============== -->
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+        </Style>
+        <Style TargetType="ScrollViewer">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- ============== Scrollbar (flat, no Win95 arrows) ============== -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="9"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#4a3838" CornerRadius="4" Margin="2,0"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== Buttons ============== -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#211a1a"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Hairline}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BloodBright}"/>
+                                <Setter TargetName="bd" Property="Background" Value="#2a2020"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#140f0f"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== ComboBox: fully custom, no native chrome ============== -->
+        <Style x:Key="ComboToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#242024"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Hairline}"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1" CornerRadius="3">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="26"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="content" Grid.Column="0" Margin="{TemplateBinding Padding}"
+                                               HorizontalAlignment="Left" TextAlignment="Left"
+                                               VerticalAlignment="Center" Foreground="{StaticResource TextMain}" TextTrimming="CharacterEllipsis"
+                                               Text="{Binding SelectedItem.Display, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                    <Path Grid.Column="1" Data="M0,0 L6,7 L12,0 Z" Fill="{StaticResource Blood}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                            <ToggleButton Style="{StaticResource ComboToggleStyle}"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"/>
+                            <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
+                                   Placement="Bottom" PopupAnimation="Slide" Width="{TemplateBinding ActualWidth}">
+                                <Border Background="#242024" BorderBrush="{StaticResource Blood}" BorderThickness="1"
+                                        MaxHeight="340" Margin="0,2,0,0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BloodBright}"/>
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BloodBright}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- One row within a dropdown entry: icon + name (left) + value (right), used for both
+             the bold Fusion/Bonus header and its indented sub-stat lines. -->
+        <DataTemplate x:Key="OptionLineTemplate">
+            <Grid Margin="{Binding Margin}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Polygon Grid.Column="0" Points="0,8 5,0 10,8 5,12" Fill="{Binding Icon}" Visibility="{Binding IconVisibility}"
+                         Width="10" Height="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="{Binding FontSize}" FontWeight="{Binding Weight}"
+                           TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="260" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value}" FontSize="{Binding FontSize}" Foreground="{StaticResource Gold}"
+                           Visibility="{Binding ValueVisibility}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- A full dropdown entry: its Lines (1 for a Segment, 3 for a Fusion, 2 for a Bonus),
+             styled the same way the "current build" preview renders a slot, not plain text. -->
+        <DataTemplate x:Key="RichOptionItemTemplate">
+            <ItemsControl ItemsSource="{Binding Lines}" ItemTemplate="{StaticResource OptionLineTemplate}" Focusable="False"/>
+        </DataTemplate>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#3a3232"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#4a3838"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== TextBox ============== -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource PanelLight}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Hairline}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource BloodBright}"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BloodBright}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== ListBox (prism list uses a card ItemTemplate below) ============== -->
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="#171212" BorderThickness="1,1,1,1" BorderBrush="#2a2020" CornerRadius="3" Padding="10,9">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#271414"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Blood}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1e1717"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== Checkbox ============== -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+
+        <!-- ============== GroupBox: a section header with a hex-glyph marker ============== -->
+        <Style TargetType="GroupBox">
+            <Setter Property="Foreground" Value="{StaticResource Bone}"/>
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="Margin" Value="0,0,0,14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GroupBox">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Path Data="M6,0 L11,3 L11,9 L6,12 L1,9 L1,3 Z" Fill="{StaticResource Blood}" Width="12" Height="12" Stretch="Fill" Margin="0,0,8,0"/>
+                                <TextBlock Text="{TemplateBinding Header}" Foreground="{StaticResource Bone}" FontWeight="SemiBold" FontSize="12"/>
+                                <Border BorderBrush="#2a2020" BorderThickness="0,1,0,0" Margin="10,0,0,0" VerticalAlignment="Center" Width="9999"/>
+                            </StackPanel>
+                            <ContentPresenter/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============== Tabs ============== -->
+        <Style TargetType="TabItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="bd" Background="Transparent" BorderBrush="{StaticResource Blood}" BorderThickness="0,0,0,2" Margin="0,0,14,0" Padding="2,8">
+                            <ContentPresenter ContentSource="Header"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BloodBright}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="False">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#2a2020"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+        </Style>
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <DockPanel.Background>
+            <RadialGradientBrush Center="0.3,0.0" RadiusX="1.1" RadiusY="0.9">
+                <GradientStop Color="#201212" Offset="0"/>
+                <GradientStop Color="#0b0a0a" Offset="0.6"/>
+            </RadialGradientBrush>
+        </DockPanel.Background>
+
+        <!-- Top bar -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" Padding="14,10" BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Path Data="M6,0 L11,3 L11,9 L6,12 L1,9 L1,3 Z" Width="22" Height="22" Stretch="Uniform" Margin="0,0,10,0" VerticalAlignment="Center">
+                        <Path.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#e14536" Offset="0"/>
+                                <GradientStop Color="#78201a" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Path.Fill>
+                        <Path.Effect>
+                            <DropShadowEffect Color="#d13a30" BlurRadius="10" ShadowDepth="0" Opacity="0.7"/>
+                        </Path.Effect>
+                    </Path>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,20,0">
+                        <TextBlock Text="REMNANT" FontFamily="Georgia" FontWeight="Bold" FontSize="17" Foreground="{StaticResource BloodBright}" LineHeight="18"/>
+                        <TextBlock Text="PRISM EDITOR" FontFamily="Georgia" FontSize="11" Foreground="{StaticResource Gold}" LineHeight="12"/>
+                    </StackPanel>
+                    <Button Click="OpenButton_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M1,3 L5,3 L6,5 L13,5 L13,12 L1,12 Z" Fill="{StaticResource Gold}" Width="13" Height="11" Stretch="Fill" Margin="0,0,7,0"/>
+                            <TextBlock Text="Open profile.sav..."/>
+                        </StackPanel>
+                    </Button>
+                    <Button Click="SaveAsButton_Click" x:Name="SaveAsBtn" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M1,1 L10,1 L13,4 L13,13 L1,13 Z M4,1 L4,5 L10,5 L10,1 M3,8 L11,8 L11,13 L3,13 Z" Fill="{StaticResource Gold}" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0"/>
+                            <TextBlock Text="Save a copy as..."/>
+                        </StackPanel>
+                    </Button>
+                    <Button Click="RevertButton_Click" x:Name="RevertBtn" IsEnabled="False" BorderBrush="{StaticResource Blood}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M7,0 A7,7 0 1 0 13,8 L11,8 A5,5 0 1 1 7,2 L7,5 L12,1 L7,-3 Z" Fill="{StaticResource BloodBright}" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0"/>
+                            <TextBlock Text="Revert to original"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="PathLabel" Text="No file open." VerticalAlignment="Center" Margin="10,0" FontStyle="Italic" Foreground="{StaticResource TextDim}"
+                           HorizontalAlignment="Right"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Panel}" Padding="14,8" BorderBrush="{StaticResource Hairline}" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="StatusLabel" Text="Ready." Foreground="{StaticResource Gold}"/>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="360"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Prism list: card style -->
+            <DockPanel Grid.Column="0" Margin="10,10,5,10">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,0,2,10">
+                    <Path Data="M6,0 L11,3 L11,9 L6,12 L1,9 L1,3 Z" Fill="{StaticResource Blood}" Width="12" Height="12" Stretch="Fill" Margin="0,0,8,0"/>
+                    <TextBlock Text="YOUR PRISMS" FontFamily="Segoe UI Semibold" Foreground="{StaticResource Bone}" FontSize="12"/>
+                </StackPanel>
+                <ListBox x:Name="PrismList" SelectionChanged="PrismList_SelectionChanged" ScrollViewer.CanContentScroll="False">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Path Grid.Column="0" Data="{StaticResource GemGeometry}" Fill="{StaticResource GemFillBrush}"
+                                      Stroke="#0b0a0a" StrokeThickness="2" Width="20" Height="24" Stretch="Uniform" Margin="0,0,10,0" VerticalAlignment="Top">
+                                    <Path.Opacity>
+                                        <Binding Path="IsBuilt" Converter="{StaticResource BuiltToOpacityConverter}"/>
+                                    </Path.Opacity>
+                                </Path>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock FontSize="11" Foreground="{StaticResource TextDim}" Margin="0,2,0,0">
+                                        <TextBlock.Text>
+                                            <Binding Path="IsBuilt" Converter="{StaticResource BuiltToStatusConverter}"/>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Center: diagram + editor -->
+            <ScrollViewer Grid.Column="1" Margin="5,10">
+                <StackPanel x:Name="DetailsPanel" IsEnabled="False" Margin="4,0">
+                    <TextBlock x:Name="PrismTitle" Text="Select a prism" FontFamily="Georgia" FontWeight="Bold" FontSize="24" Margin="2,2,2,0" Foreground="{StaticResource Gold}"/>
+                    <TextBlock x:Name="PrismStatus" Text="" Margin="2,2,2,14" Foreground="{StaticResource TextDim}" FontSize="12"/>
+
+                    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Hairline}" BorderThickness="1" Margin="0,0,0,16" Padding="16">
+                        <StackPanel>
+                            <!-- The prism itself: a faceted gem with its level badge, matching the in-game centerpiece. -->
+                            <Canvas x:Name="DiagramCanvas" Width="180" Height="200" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                            <!-- The build list, styled after the game's own "PRISM" panel (icon + name + right-aligned value,
+                                 with a Fusion's two stats indented beneath it), not a graphical ring of slots. -->
+                            <StackPanel x:Name="BuildListPanel" Margin="4,0" MaxWidth="360" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+
+                    <GroupBox Header="5 ENHANCEMENT SLOTS -- FUSION OR SEGMENT EACH">
+                        <StackPanel>
+                            <ComboBox x:Name="Slot0" SelectionChanged="SlotChanged"/>
+                            <ComboBox x:Name="Slot1" SelectionChanged="SlotChanged"/>
+                            <ComboBox x:Name="Slot2" SelectionChanged="SlotChanged"/>
+                            <ComboBox x:Name="Slot3" SelectionChanged="SlotChanged"/>
+                            <ComboBox x:Name="Slot4" SelectionChanged="SlotChanged"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="LEGENDARY BONUS -- UNLOCKED AT MAX LEVEL">
+                        <ComboBox x:Name="BonusSlot" SelectionChanged="SlotChanged"/>
+                    </GroupBox>
+
+                    <TextBlock x:Name="ConflictWarning" Foreground="{StaticResource BloodBright}" TextWrapping="Wrap" Margin="2,6" FontWeight="Bold"/>
+
+                    <CheckBox x:Name="AllowOverlapCheck" Content="Allow the same stat to be granted multiple times (bypasses the game's normal rule, for experimenting with stacking)" Checked="SlotChanged" Unchecked="SlotChanged"/>
+
+                    <Button x:Name="ApplyBtn" Content="APPLY &amp; WRITE TO profile.sav" Click="ApplyButton_Click" HorizontalAlignment="Left" Margin="0,12,0,24"
+                            Background="#3a1414" BorderBrush="{StaticResource Blood}" Foreground="{StaticResource Gold}" FontWeight="Bold" Padding="18,11" FontSize="13"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right: community builds -->
+            <DockPanel Grid.Column="2" Margin="5,10,10,10">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,0,2,10">
+                    <Path Data="M6,0 L11,3 L11,9 L6,12 L1,9 L1,3 Z" Fill="{StaticResource Blood}" Width="12" Height="12" Stretch="Fill" Margin="0,0,8,0"/>
+                    <TextBlock Text="COMMUNITY BUILDS" FontFamily="Segoe UI Semibold" Foreground="{StaticResource Bone}" FontSize="12"/>
+                </StackPanel>
+                <ScrollViewer>
+                    <StackPanel x:Name="BuildsPanel" Margin="2,0"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>
