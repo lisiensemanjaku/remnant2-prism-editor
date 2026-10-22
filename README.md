@@ -11,6 +11,8 @@ Games, Arc Games, or THQ Nordic. See [LICENSE.md](LICENSE.md): this is
 source-available, personal-use software, not open source in the licensing
 sense (no redistribution).
 
+![Remnant 2 Prism Editor screenshot](docs/screenshot.png)
+
 ## 📥 Download
 
 **[⬇ Download PrismEditor.zip (latest release)](https://github.com/lisiensemanjaku/remnant2-prism-editor/releases/latest)**
