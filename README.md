@@ -27,8 +27,12 @@ No installation needed. Unzip it anywhere and run `PrismEditor.exe`.
 
 ## What it does
 
-- Reads all 7 of your prisms (Hatred, Lethargy, Passion, Pride, Jealousy,
-  Voracity, Greed) straight out of `profile.sav`.
+- Reads your prisms (Hatred, Lethargy, Passion, Pride, Jealousy, Voracity,
+  Greed) straight out of `profile.sav`.
+- **Works on every character in the save.** Saves can hold several
+  characters, each with their own prisms. A character picker at the top of
+  the left column lists them all (with a prism count for each), and editing
+  one character never touches the others.
 - Lets you pick any of the game's 23 real Fusions, 45 Segments, and 42
   Legendary Bonuses for each prism's 6 slots, pulled live from the game's
   own item database instead of a hardcoded list that can go stale after a
@@ -55,7 +59,8 @@ No installation needed. Unzip it anywhere and run `PrismEditor.exe`.
 3. Click **Open profile.sav...** and pick your save file. It's usually at:
    - Epic Games: `%USERPROFILE%\Saved Games\Remnant2\<platform>\profile.sav`
    - Steam: `%LocalAppData%\Remnant2\Saved\SaveGames\profile.sav`
-4. Pick a prism from the list on the left.
+4. Choose a character from the **Character** dropdown (if your save has
+   more than one), then pick a prism from the list below it.
 5. Either:
    - Pick a fusion/segment for each of the 5 enhancement slots and a
      legendary bonus yourself, or
