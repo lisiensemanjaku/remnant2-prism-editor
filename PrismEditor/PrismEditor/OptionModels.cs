@@ -18,6 +18,13 @@ namespace PrismEditor
         public Visibility IconVisibility => Icon != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>One entry in the character picker.</summary>
+    public class CharacterOption
+    {
+        public string Display { get; set; } = "";
+        public CharacterOption(string display) => Display = display;
+    }
+
     /// <summary>One enhancement/bonus dropdown entry: a stable RowName to select by, a plain
     /// Display string for the closed combo box, and the rich Lines shown in the open dropdown
     /// (styled the same way the "current build" preview renders a slot).</summary>

@@ -42,9 +42,28 @@ namespace PrismEditor
         private SaveFile _save = null!;
         private string _path = null!;
         private string _originalBackupPath = null!;
-        private ArrayStructProperty _itemsArray = null!;
+        private List<List<PrismViewModel>> _prismsByCharacter = new();
 
+        /// <summary>Prisms of the currently selected character.</summary>
         public List<PrismViewModel> Prisms { get; private set; } = new();
+
+        /// <summary>Index of the character whose prisms are in <see cref="Prisms"/>.</summary>
+        public int SelectedCharacter { get; private set; }
+
+        /// <summary>One label per character in the save, in the order they appear in the file.</summary>
+        public List<string> CharacterLabels =>
+            _prismsByCharacter.Select((list, i) => $"Character {i + 1}  ({list.Count} {(list.Count == 1 ? "prism" : "prisms")})").ToList();
+
+        // Every prism on every character. Used only to borrow raw property shapes from: they all live in
+        // the same file and share one name table, so cloning across characters is as safe as within one.
+        private IEnumerable<PrismViewModel> AllPrisms => _prismsByCharacter.SelectMany(l => l);
+
+        public void SelectCharacter(int index)
+        {
+            if (index < 0 || index >= _prismsByCharacter.Count) throw new ArgumentOutOfRangeException(nameof(index));
+            SelectedCharacter = index;
+            Prisms = _prismsByCharacter[index];
+        }
 
         /// <summary>True once this file has an app-made pristine copy of how it looked the
         /// very first time it was opened -- i.e. RevertToOriginal() has something to restore.</summary>
@@ -62,24 +81,37 @@ namespace PrismEditor
 
             _save = SaveFile.Read(profilePath);
 
-            var savedCharacter = _save.SaveData.Objects.First(o =>
-                o.Name == "SavedCharacter" && o.Properties.Properties.Any(kv => kv.Key == "CharacterData"));
-            var charDataStruct = (StructProperty)savedCharacter.Properties.Properties.First(kv => kv.Key == "CharacterData").Value.Value!;
-            var nestedSave = (SaveData)charDataStruct.Value!;
-            var playerObj = nestedSave.Objects.First(o =>
-                o.ObjectPath == "Character_Master_Player_C" || o.Name == "Character_Master_Player_C");
-            var invComp = playerObj.Components.First(c => c.Properties.Properties.Any(kv => kv.Key == "Items"));
-            _itemsArray = (ArrayStructProperty)invComp.Properties.Properties.First(kv => kv.Key == "Items").Value.Value!;
+            // Every character in the save has its own inventory, and prisms live in it.
+            var characters = _save.SaveData.Objects
+                .Where(o => o.Name == "SavedCharacter" && o.Properties.Properties.Any(kv => kv.Key == "CharacterData"))
+                .ToList();
+            if (characters.Count == 0)
+                throw new InvalidOperationException("No characters were found in this save file.");
 
-            Prisms = BuildPrismList();
+            _prismsByCharacter = characters
+                .Select(c => FindItemsArray(c) is { } items ? BuildPrismList(items) : new List<PrismViewModel>())
+                .ToList();
+
+            SelectCharacter(0);
         }
 
-        private List<PrismViewModel> BuildPrismList()
+        /// <summary>The inventory Items array of one character, or null if that character has none.</summary>
+        private static ArrayStructProperty? FindItemsArray(UObject savedCharacter)
+        {
+            var charDataStruct = (StructProperty)savedCharacter.Properties.Properties.First(kv => kv.Key == "CharacterData").Value.Value!;
+            var nestedSave = (SaveData)charDataStruct.Value!;
+            var playerObj = nestedSave.Objects.FirstOrDefault(o =>
+                o.ObjectPath == "Character_Master_Player_C" || o.Name == "Character_Master_Player_C");
+            var invComp = playerObj?.Components.FirstOrDefault(c => c.Properties.Properties.Any(kv => kv.Key == "Items"));
+            return invComp?.Properties.Properties.First(kv => kv.Key == "Items").Value.Value as ArrayStructProperty;
+        }
+
+        private List<PrismViewModel> BuildPrismList(ArrayStructProperty itemsArray)
         {
             var prismIds = PrismCatalog_PrismItemIds();
             var result = new List<PrismViewModel>();
 
-            foreach (var it in _itemsArray.Items)
+            foreach (var it in itemsArray.Items)
             {
                 if (it is not PropertyBag bag) continue;
                 var bpKv = bag.Properties.FirstOrDefault(kv => kv.Key == "ItemBP");
@@ -226,8 +258,8 @@ namespace PrismEditor
             else
             {
                 // Build fresh property instances by cloning the shape from any already-built prism in this save.
-                var template = Prisms.FirstOrDefault(p => p.IsBuilt) ??
-                    throw new InvalidOperationException("None of the prisms in this save have been built yet, so there is no existing prism to copy the slot structure from. Level one prism in-game first, then edit it here.");
+                var template = AllPrisms.FirstOrDefault(p => p.IsBuilt) ??
+                    throw new InvalidOperationException("None of the prisms on any character in this save have been built yet, so there is no existing prism to copy the slot structure from. Level one prism in-game first, then edit it here.");
                 var tprops = template.InstanceDataObject.Properties.Properties;
                 segProp = (Property)DeepClone(tprops.First(kv => kv.Key == "CurrentSegments").Value)!;
                 levelProp = (Property)DeepClone(tprops.First(kv => kv.Key == "Level").Value)!;
@@ -256,7 +288,7 @@ namespace PrismEditor
                 // Need one real feed entry to clone the shape from: this prism's own, else any other prism's.
                 object? feedTemplate = feedArray.Items.Count > 0
                     ? feedArray.Items[0]
-                    : Prisms.Select(p => FindProperty(p, "CurrentFeedData")?.Value as ArrayStructProperty)
+                    : AllPrisms.Select(p => FindProperty(p, "CurrentFeedData")?.Value as ArrayStructProperty)
                             .Where(a => a != null && a.Items.Count > 0)
                             .Select(a => a!.Items[0])
                             .FirstOrDefault();
@@ -326,7 +358,7 @@ namespace PrismEditor
         /// <summary>First prism in this save that actually has the named property, or null if none do.
         /// Used to borrow a property's raw shape for prisms that lack it.</summary>
         private Property? FindPropertyOnAnyPrism(string key) =>
-            Prisms.Select(p => FindProperty(p, key)).FirstOrDefault(p => p != null);
+            AllPrisms.Select(p => FindProperty(p, key)).FirstOrDefault(p => p != null);
 
         private static List<string> ResolveFeedRows(IEnumerable<string> enhancementRows)
         {

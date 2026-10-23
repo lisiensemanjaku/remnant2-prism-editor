@@ -72,11 +72,11 @@ public partial class MainWindow : Window
         {
             _editor.Open(dlg.FileName);
             PathLabel.Text = dlg.FileName;
-            PrismList.ItemsSource = _editor.Prisms;
+            LoadCharacterPicker();
             SaveAsBtn.IsEnabled = true;
             RevertBtn.IsEnabled = _editor.HasOriginalBackup;
             DetailsPanel.IsEnabled = false;
-            SetStatus($"Loaded {_editor.Prisms.Count} prisms. A pristine copy of this file was saved as a safety net -- use Revert to original any time.", good: true);
+            SetStatus($"Loaded {_editor.CharacterLabels.Count} character(s). A pristine copy of this file was saved as a safety net, use Revert to original any time.", good: true);
         }
         catch (Exception ex)
         {
@@ -117,7 +117,7 @@ public partial class MainWindow : Window
         try
         {
             _editor.RevertToOriginal();
-            PrismList.ItemsSource = _editor.Prisms;
+            LoadCharacterPicker();
             DetailsPanel.IsEnabled = false;
             _selected = null;
             SetStatus("Reverted to the original file. All edits since the first time you opened it are gone.", good: true);
@@ -126,6 +126,34 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, "Revert failed:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    // ---------------- Character picker ----------------
+
+    /// <summary>Fills the picker from the open save and shows the first character's prisms.</summary>
+    private void LoadCharacterPicker()
+    {
+        CharacterCombo.ItemsSource = _editor.CharacterLabels.Select(l => new CharacterOption(l)).ToList();
+        CharacterCombo.IsEnabled = true;
+        CharacterCombo.SelectedIndex = _editor.SelectedCharacter; // fires CharacterCombo_SelectionChanged
+        ShowSelectedCharacterPrisms();
+    }
+
+    private void CharacterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CharacterCombo.SelectedIndex < 0) return;
+        _editor.SelectCharacter(CharacterCombo.SelectedIndex);
+        ShowSelectedCharacterPrisms();
+    }
+
+    private void ShowSelectedCharacterPrisms()
+    {
+        _selected = null;
+        PrismList.ItemsSource = _editor.Prisms;
+        PrismList.SelectedIndex = -1;
+        DetailsPanel.IsEnabled = false;
+        PrismTitle.Text = _editor.Prisms.Count == 0 ? "No prisms on this character" : "Select a prism";
+        PrismStatus.Text = "";
     }
 
     // ---------------- Prism selection ----------------
