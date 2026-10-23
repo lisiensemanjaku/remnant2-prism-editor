@@ -208,21 +208,31 @@ namespace PrismEditor
 
             var props = vm.InstanceDataObject.Properties.Properties;
 
-            Property segProp, feedProp, levelProp;
+            // Feed history (CurrentFeedData) and HasBeenFed are optional: plenty of valid built prisms
+            // never recorded them (e.g. ones from a save played through normally), so they must never be
+            // assumed present on this prism or on any other one.
+            Property segProp, levelProp;
+            Property? feedProp;
             if (vm.IsBuilt)
             {
                 segProp = props.First(kv => kv.Key == "CurrentSegments").Value;
-                feedProp = props.First(kv => kv.Key == "CurrentFeedData").Value;
                 levelProp = props.First(kv => kv.Key == "Level").Value;
+                feedProp = props.FirstOrDefault(kv => kv.Key == "CurrentFeedData").Value;
+
+                // A pending level-up roll is stale once the prism is fully built.
+                if (props.RemoveAll(kv => kv.Key is "PendingRoll" or "PendingExperience") > 0)
+                    RebuildLookup(vm.InstanceDataObject.Properties);
             }
             else
             {
                 // Build fresh property instances by cloning the shape from any already-built prism in this save.
                 var template = Prisms.FirstOrDefault(p => p.IsBuilt) ??
-                    throw new InvalidOperationException("No already-built prism in this save to use as a structural template.");
-                segProp = (Property)DeepClone(template.InstanceDataObject.Properties.Properties.First(kv => kv.Key == "CurrentSegments").Value)!;
-                feedProp = (Property)DeepClone(template.InstanceDataObject.Properties.Properties.First(kv => kv.Key == "CurrentFeedData").Value)!;
-                levelProp = (Property)DeepClone(template.InstanceDataObject.Properties.Properties.First(kv => kv.Key == "Level").Value)!;
+                    throw new InvalidOperationException("None of the prisms in this save have been built yet, so there is no existing prism to copy the slot structure from. Level one prism in-game first, then edit it here.");
+                var tprops = template.InstanceDataObject.Properties.Properties;
+                segProp = (Property)DeepClone(tprops.First(kv => kv.Key == "CurrentSegments").Value)!;
+                levelProp = (Property)DeepClone(tprops.First(kv => kv.Key == "Level").Value)!;
+                var feedDonor = FindPropertyOnAnyPrism("CurrentFeedData");
+                feedProp = feedDonor != null ? (Property)DeepClone(feedDonor)! : null;
             }
 
             // Fill the 6 slots.
@@ -238,25 +248,32 @@ namespace PrismEditor
 
             // Rebuild feed history: one entry per distinct underlying sub-stat granted by
             // the chosen fusions/segments (cosmetic "materials fed" bookkeeping only).
-            var feedRows = ResolveFeedRows(allRows.Take(5));
-            var feedArray = (ArrayStructProperty)feedProp.Value!;
-            var feedTemplate = feedArray.Items.Count > 0 ? feedArray.Items[0] : null;
-            if (feedTemplate == null)
+            if (feedProp != null)
             {
-                var anyBuilt = Prisms.First(p => p.IsBuilt);
-                var anyFeed = (ArrayStructProperty)anyBuilt.InstanceDataObject.Properties.Properties
-                    .First(kv => kv.Key == "CurrentFeedData").Value.Value!;
-                feedTemplate = anyFeed.Items[0];
+                var feedRows = ResolveFeedRows(allRows.Take(5));
+                var feedArray = (ArrayStructProperty)feedProp.Value!;
+
+                // Need one real feed entry to clone the shape from: this prism's own, else any other prism's.
+                object? feedTemplate = feedArray.Items.Count > 0
+                    ? feedArray.Items[0]
+                    : Prisms.Select(p => FindProperty(p, "CurrentFeedData")?.Value as ArrayStructProperty)
+                            .Where(a => a != null && a.Items.Count > 0)
+                            .Select(a => a!.Items[0])
+                            .FirstOrDefault();
+
+                if (feedTemplate != null)
+                {
+                    var newFeedItems = feedRows.Select(row =>
+                    {
+                        var clone = (PropertyBag)DeepClone(feedTemplate)!;
+                        WriteFName(clone, "RowName", row);
+                        WriteIntField(clone, "FedLevel", 32);
+                        return (object?)clone;
+                    }).ToList();
+                    feedArray.Items.Clear();
+                    foreach (var it in newFeedItems) feedArray.Items.Add(it);
+                }
             }
-            var newFeedItems = feedRows.Select(row =>
-            {
-                var clone = (PropertyBag)DeepClone(feedTemplate)!;
-                WriteFName(clone, "RowName", row);
-                WriteIntField(clone, "FedLevel", 32);
-                return (object?)clone;
-            }).ToList();
-            feedArray.Items.Clear();
-            foreach (var it in newFeedItems) feedArray.Items.Add(it);
 
             WriteByteOrInt(levelProp, rawLevel);
 
@@ -268,23 +285,29 @@ namespace PrismEditor
                 // clone a fresh HasBeenFed field from the template if this prism never had one.
                 props.RemoveAll(kv => kv.Key is "PendingRoll" or "PendingExperience");
 
-                var template = Prisms.First(p => p.IsBuilt);
                 var seedKv = props.FirstOrDefault(kv => kv.Key == "CurrentSeed");
                 if (seedKv.Value == null)
-                    seedKv = new KeyValuePair<string, Property>("CurrentSeed",
-                        (Property)DeepClone(template.InstanceDataObject.Properties.Properties.First(kv => kv.Key == "CurrentSeed").Value)!);
+                {
+                    var seedDonor = FindPropertyOnAnyPrism("CurrentSeed")
+                        ?? throw new InvalidOperationException("This prism has no CurrentSeed and no other prism has one to copy.");
+                    seedKv = new KeyValuePair<string, Property>("CurrentSeed", (Property)DeepClone(seedDonor)!);
+                }
 
+                // HasBeenFed only if this prism already had it or another prism can supply the shape.
                 var fedKv = props.FirstOrDefault(kv => kv.Key == "HasBeenFed");
                 if (fedKv.Value == null)
-                    fedKv = new KeyValuePair<string, Property>("HasBeenFed",
-                        (Property)DeepClone(template.InstanceDataObject.Properties.Properties.First(kv => kv.Key == "HasBeenFed").Value)!);
-                WriteBool(fedKv.Value, true);
+                {
+                    var fedDonor = FindPropertyOnAnyPrism("HasBeenFed");
+                    if (fedDonor != null)
+                        fedKv = new KeyValuePair<string, Property>("HasBeenFed", (Property)DeepClone(fedDonor)!);
+                }
+                if (fedKv.Value != null) WriteBool(fedKv.Value, true);
 
                 props.Clear();
                 props.Add(new KeyValuePair<string, Property>("CurrentSegments", segProp));
                 props.Add(seedKv);
-                props.Add(new KeyValuePair<string, Property>("CurrentFeedData", feedProp));
-                props.Add(fedKv);
+                if (feedProp != null) props.Add(new KeyValuePair<string, Property>("CurrentFeedData", feedProp));
+                if (fedKv.Value != null) props.Add(fedKv);
                 props.Add(new KeyValuePair<string, Property>("Level", levelProp));
                 RebuildLookup(vm.InstanceDataObject.Properties);
 
@@ -292,10 +315,18 @@ namespace PrismEditor
             }
 
             vm.RawLevel = rawLevel;
-            vm.HasBeenFed = true;
+            vm.HasBeenFed = props.Any(kv => kv.Key == "HasBeenFed" && ReadBool(kv.Value));
             for (int i = 0; i < 6; i++)
                 vm.Slots[i] = new SlotViewModel { RowName = allRows[i], Level = levels[i] };
         }
+
+        private static Property? FindProperty(PrismViewModel prism, string key) =>
+            prism.InstanceDataObject.Properties.Properties.FirstOrDefault(kv => kv.Key == key).Value;
+
+        /// <summary>First prism in this save that actually has the named property, or null if none do.
+        /// Used to borrow a property's raw shape for prisms that lack it.</summary>
+        private Property? FindPropertyOnAnyPrism(string key) =>
+            Prisms.Select(p => FindProperty(p, key)).FirstOrDefault(p => p != null);
 
         private static List<string> ResolveFeedRows(IEnumerable<string> enhancementRows)
         {
